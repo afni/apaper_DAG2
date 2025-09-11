@@ -1,56 +1,82 @@
 # biased estimation of correlation in the presence of noise;
 # correlation simulated between two regions with time series of 300 time point
+
 require(MASS)
-sim <- function(nt=300, rr=NULL) {
+require(ggplot2)
+
+sim <- function(nt=300) {
+    rr <- NULL
     dd    <- mvrnorm(n=nt, mu=rep(0,4), Sigma=V)
     bold1 <- dd[,1]+dd[,3]; bold2 <- dd[,2]+dd[,4]
-    rr    <- c(rr, cor(bold1, bold2))
+    rr  <- c(rr, cor(bold1, bold2))
 }
 
 res <- NULL
-for(rN in seq(0, 0.8, 0.4)) for(rE in c(0, 0.4)) for(rC in c(0, 0.4)) 
-for(Rv in c(0.1,0.2,0.3,0.4,0.5,0.75,1,1.5,2,2.5,3)) {  # Rv - standard deviation ratio
+for(rN in seq(0, 0.8, 0.4))
+for(rE in c(0, 0.4)) #c(0, 0.2, 0.4))
+for(rC in c(0, 0.4)) #c(0, 0.4))
+for(Rv in c(0,0.1,0.2,0.3,0.4,0.5,0.75,1,1.5,2,2.5,3)) {  # Rv - standard deviation ratio: anything else vs neural activity; doesn't matter
     V <- matrix(c(1, rN, rC, rC,
-                 rN, 1, rC, rC,
-                 rC, rC, 1, rE,
-                 rC, rC, rE, 1), ncol=4, nrow=4)
+                rN, 1, rC, rC,
+                rC, rC, 1, rE,
+                rC, rC, rE, 1), ncol=4, nrow=4)
     V <- diag(c(1,1,Rv,Rv)) %*% V %*% diag(c(1,1,Rv,Rv))
-  res <- rbind(res, data.frame(rN=rN, rE=rE, rC=rC, Rv=Rv, r=replicate(500, sim(nt=300, rr=NULL))))
+  res <- rbind(res, data.frame(rN=rN, rE=rE, rC=rC, Rv=Rv, r=replicate(500, sim(nt=300))))
 }
 
-# result plotting
-require(ggplot2)
+# plotting
 dd    <- aggregate(r~rN+rE+rC+Rv, res, mean)
 dd$se <- aggregate(r~rN+rE+rC+Rv, res, sd)[,'r']
-dd$rhoP <- dd$rN; dd$rN <- as.factor(dd$rN); ddR$rE <- as.factor(dd$rE)
-levels(dd$rN) <- c(parse(text = paste("rho~'='~0")), parse(text = paste("rho~'='~0.4")), parse(text = paste("rho~'='~0.8")))
-levels(dd$rE) <- c(expression(r["e"]~'='~0), expression(r["e"]~'='~0.4))
-dev.new(width=6, height=4)
-ggplot(dd[dd$rC==0,], aes(x=Rv, y=r)) + theme_bw() +
-  geom_errorbar(aes(ymin=r-2*se, ymax=r+2*se, col='red'), width=.1) +
-  geom_point(size=1.5, shape=21, fill="white", col='red') + geom_hline(aes(yintercept = rhoP, col='blue')) +
-  stat_smooth(aes(x = Rv, y = r), method = "gam", se = FALSE, color='cyan') +
-  scale_color_manual(values = c('blue', 'red'), labels=c(parse(text = paste("assumed: rho")), expression(paste('estimated: r*'))) ) +
-  facet_grid(rE~rN, scales = "fixed", labeller = label_parsed) +
-  scale_y_continuous(breaks = seq(0,0.8,0.2), labels = seq(0,0.8,0.2)) +
-  labs(x=expression('relative amount of noise: Rv'), y=expression(paste('estimated BOLD correlation: r*'))) + guides(linetype = "none") +
-  theme(legend.position = c(.175,.85), legend.text=element_text(size=12), legend.title=element_blank(),
-     axis.text=element_text(size=12), strip.text.x = element_text(size = 12),
-     axis.title=element_text(size=14), strip.text = element_text(size = 12),
-     panel.border = element_blank(),
-     panel.background = element_blank())
+ddR <- dd; ddR$rhoP <- dd$rN
+ddR$rN <- as.factor(ddR$rN)
+levels(ddR$rN) <- c("r[neur] == 0", "r[neur] == 0.4", "r[neur] == 0.8")
 
 dev.new(width=6, height=4)
-ggplot(dd[dd$rC==0.4,], aes(x=Rv, y=r)) + theme_bw() +
-  geom_errorbar(aes(ymin=r-2*se, ymax=r+2*se, col='red'), width=.1) +
-  geom_point(size=1.5, shape=21, fill="white", col='red') + geom_hline(aes(yintercept = rhoP, col='blue')) +
-  stat_smooth(aes(x = Rv, y = r), method = "gam", se = FALSE, color='cyan') +
-  scale_color_manual(values = c('blue', 'red'), labels=c(parse(text = paste("assumed: rho")), expression(paste('estimated: r*'))) ) +
+ggplot(ddR[ddR$rC==0,], aes(x=Rv, y=r)) + theme_bw() +
+  geom_pointrange(aes(ymin = r - 2 * se, ymax = r + 2 * se, col = 'red'), fatten=3) +
+  geom_point(aes(col = 'red'), size=1.5, shape=21, fill="white") +
+  geom_hline(aes(yintercept = rhoP, color='blue')) +
+  stat_smooth(aes(x = Rv, y = r, color='cyan'), method = "gam", se = FALSE) +
+  scale_color_manual(
+    values = c('blue' = 'red', 'cyan' = 'cyan', 'red' = 'blue'),
+    labels = c(
+      expression('assumed: r'[neur]),
+      expression('theoretical:  r'[fMRI]),
+      expression('simulated:  r'[fMRI])
+    ) ) +
   facet_grid(rE~rN, scales = "fixed", labeller = label_parsed) +
-  scale_y_continuous(breaks = seq(0,0.8,0.2), labels = seq(0,0.8,0.2)) +
-  labs(x=expression('relative amount of noise: Rv'), y=expression(paste('estimated BOLD correlation: r*'))) + guides(linetype = "none") +
-  theme(legend.position = c(.175,.85), legend.text=element_text(size=12), legend.title=element_blank(),
+  scale_y_continuous(breaks = seq(0,0.8,0.2), labels = seq(0,0.8,0.2)) + guides(linetype = "none") +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.5, alpha=0.25) +
+  geom_vline(xintercept = 0, color = "black", linewidth = 0.5, alpha=0.25) +
+  geom_hline(aes(yintercept = rE), color='#009E73', linetype = "dotted", linewidth=1) +
+  labs(x=expression('relative noise magnitude, R'[v]), y=expression(paste('correlation'))) + #,  r'[fMRI]))) + 
+    theme(legend.position = "none", #c(.175,.85),
+          legend.text=element_text(size=12), legend.title=element_blank(),
      axis.text=element_text(size=12), strip.text.x = element_text(size = 12),
-     axis.title=element_text(size=14), strip.text = element_text(size = 12),
-     panel.border = element_blank(),
-     panel.background = element_blank())
+     panel.grid = element_blank(), strip.background = element_blank(),
+     axis.title=element_text(size=14), strip.text = element_text(size = 12), 
+     panel.border = element_blank(), panel.background = element_blank())
+
+dev.new(width=6, height=4)
+ggplot(ddR[ddR$rC==0.4,], aes(x=Rv, y=r)) + theme_bw() +
+  geom_pointrange(aes(ymin = r - 2 * se, ymax = r + 2 * se, col = 'red'), fatten=3) +
+  geom_point(aes(col = 'red'), size=1.5, shape=21, fill="white") +
+  geom_hline(aes(yintercept = rhoP, col='blue')) +
+  stat_smooth(aes(x = Rv, y = r, color='cyan'), method = "gam", se = FALSE) +
+  scale_color_manual(
+    values = c('blue' = 'red', 'cyan' = 'cyan', 'red' = 'blue'),
+    labels = c(
+      expression('assumed: r'[neur]),
+      expression('theoretical:  r'[fMRI]),
+      expression('simulated:  r'[fMRI])
+    ) ) +
+  facet_grid(rE~rN, scales = "fixed", labeller = label_parsed) + guides(linetype = "none") +
+  scale_y_continuous(breaks = seq(0,0.8,0.2), labels = seq(0,0.8,0.2)) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.5, alpha=0.25) +
+  geom_vline(xintercept = 0, color = "black", linewidth = 0.5, alpha=0.25) +
+  geom_hline(aes(yintercept = rE), color='#009E73', linetype = "dotted", linewidth=1) +
+  labs(x=expression('relative noise magnitude, R'[v]), y=expression(paste('correlation'))) + #, r'[fMRI]))) + 
+    theme(#legend.position = c(.2,.875), legend.text=element_text(size=12), legend.title=element_blank(),
+     legend.position = "none", legend.text=element_text(size=12), legend.title=element_blank(),
+     axis.text=element_text(size=12), strip.text.x = element_text(size = 12), panel.grid = element_blank(),
+     axis.title=element_text(size=14), strip.text = element_text(size = 12), strip.background = element_blank(),
