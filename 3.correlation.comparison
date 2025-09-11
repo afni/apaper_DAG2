@@ -316,3 +316,120 @@ ggplot(res, aes(x = factor(group), y = r, color = factor(group))) +
      axis.line.y.right = element_blank(), axis.line.x.top = element_blank(),
      axis.text=element_text(size=16), strip.text.x = element_text(size = 16),
      axis.title=element_text(size=16), strip.text = element_text(size = 16)) 
+
+# group difference shows little statistical evidence, aligning with the ground truth of no group difference
+require(MASS)
+library(ggplot2)
+library(ggdist)
+
+res <- NULL
+rN <- 0.4; rC <- 0.2; rE <- 0.2
+for(rC in c(0.2, 0.3)) {
+    V <- matrix(c(1, rN, rC, rC,
+                rN, 1, rC, rC,
+                rC, rC, 1, rE,
+                rC, rC, rE, 1), ncol=4, nrow=4)
+    V <- diag(c(1,1,Rv,Rv)) %*% V %*% diag(c(1,1,Rv,Rv))
+  res <- rbind(res, data.frame(rC=rC, r=replicate(20, sim(nt=300))))
+}
+
+fisher <- function(r) ifelse(abs(r) < .995, 0.5*(log(1+r)-log(1-r)), stop('Are you sure that you have correlation values so close to 1 or -1?'))
+z2r <- function(z) (exp(2*z)-1)/(exp(2*z)+1)
+res$r <- res$r+z2r(rnorm(40, mean = 0, sd = 0.02))
+t.test(fisher(res[res$rC==0.2,'r']), fisher(res[res$rC==0.4,'r']))
+
+res$group <- ifelse(res$rC==0.2, 1, 2)
+library(CIPerm)
+ci <- round(cint(dset = dset(res[res$group==1,'r'], res[res$group==2,'r']), conf.level = .95, tail = "Two")$conf.int, 3)
+
+dev.new(width=4, height=4)
+ggplot(res, aes(x = factor(group), y = r, color = factor(group))) +
+  geom_jitter(width = 0.2, size = 3) + theme_bw() +
+  labs(x = NULL, y = expression(italic(r)[fMRI])) + scale_y_continuous(limits = c(0.19, 0.81)) +
+  scale_x_discrete(labels = c("group 1", "group 2")) +   # <-- change tick labels here
+  annotate("text", x = 1.5, y = 0.75, label = "group difference", size = 5, color = "black") +
+  annotate("text", x = 1.5, y = 0.7,
+         label = paste0('"95% interval: (', round(ci[1], 2), ', ', round(ci[2], 2), ')"'),
+         size = 5, color = "black", parse = TRUE) +
+  annotate("segment", x = 0.65, xend = 1.35, y = 0.4, yend = 0.4, color = gg_color_hue(2)[1], linetype = "dashed", alpha = 0.5) +
+  annotate("segment", x = 1.65, xend = 2.35, y = 0.4, yend = 0.4, color = gg_color_hue(2)[2], linetype = "dashed", alpha = 0.5) +
+  annotate("segment", x = 0.65, xend = 1.35, y = mean(res[res$group==1, ]$r), yend = mean(res[res$group==1, ]$r), color = gg_color_hue(2)[1], linetype = 1, alpha = 0.5) +
+  annotate("segment", x = 1.65, xend = 2.35, y = mean(res[res$group==2, ]$r), yend = mean(res[res$group==2, ]$r), color = gg_color_hue(2)[2], linetype = 1, alpha = 0.5) +
+  annotate("segment", x = 1.3, xend = 1.3, y = 0.4, yend = mean(res[res$group==1, ]$r), 
+               arrow = arrow(length = unit(0.2, "cm"), type = "closed"), linewidth = 0.75, color = gg_color_hue(2)[1], alpha = 0.5) +
+  annotate("segment", x = 2.3, xend = 2.3, y = 0.4, yend = mean(res[res$group==2, ]$r),
+               arrow = arrow(length = unit(0.2, "cm"), type = "closed"), linewidth = 0.75, color = gg_color_hue(2)[2], alpha = 0.5) +
+  theme(legend.position = "none", panel.border = element_blank(), panel.grid = element_blank(),
+     axis.line.y.left = element_line(color = "black"), axis.line.x.bottom = element_line(color = "black"),
+     axis.line.y.right = element_blank(), axis.line.x.top = element_blank(),
+     axis.text=element_text(size=16), strip.text.x = element_text(size = 16),
+     axis.title=element_text(size=16), strip.text = element_text(size = 16)) 
+
+# group difference maintains the same sign with strong statistical evidence
+library(MASS)
+library(ggplot2)
+library(ggdist)
+
+sim <- function(nt=300) {
+    rr <- NULL
+    dd    <- mvrnorm(n=nt, mu=rep(0,4), Sigma=V)
+    bold1 <- dd[,1]+dd[,3]; bold2 <- dd[,2]+dd[,4]
+    rr  <- c(rr, cor(bold1, bold2))
+}
+
+res <- NULL
+rC <- 0.2; rE <- 0.2; Rv <- 1
+for(rN in c(0.4)) {
+    V <- matrix(c(1, rN, rC, rC,
+                rN, 1, rC, rC,
+                rC, rC, 1, rE,
+                rC, rC, rE, 1), ncol=4, nrow=4)
+    V <- diag(c(1,1,Rv,Rv)) %*% V %*% diag(c(1,1,Rv,Rv))
+  res <- rbind(res, data.frame(rN=rN, r=replicate(20, sim(nt=300))))
+}
+
+Rv <- 1
+for(rN in c(0.6)) {  # Rv - standard deviation ratio: anything else vs neural activity; doesn't matter
+    V <- matrix(c(1, rN, rC, rC,
+                rN, 1, rC, rC,
+                rC, rC, 1, rE,
+                rC, rC, rE, 1), ncol=4, nrow=4)
+    V <- diag(c(1,1,Rv,Rv)) %*% V %*% diag(c(1,1,Rv,Rv))
+  res <- rbind(res, data.frame(rN=rN, r=replicate(20, sim(nt=300))))
+}
+
+fisher <- function(r) ifelse(abs(r) < .995, 0.5*(log(1+r)-log(1-r)), stop('Are you sure that you have correlation values so close to 1 or -1?'))
+z2r <- function(z) (exp(2*z)-1)/(exp(2*z)+1)
+res$r <- res$r+z2r(rnorm(40, mean = 0, sd = 0.02))
+t.test(fisher(res[res$rN==0.4,'r']), fisher(res[res$rN==0.8,'r']))
+
+res$group <- ifelse(res$rN==0.4, 1, 2)
+library(CIPerm)
+ci <- round(cint(dset = dset(res[res$group==1,'r'], res[res$group==2,'r']), conf.level = .95, tail = "Two")$conf.int, 3)
+
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+dev.new(width=4, height=4)
+ggplot(res, aes(x = factor(group), y = r, color = factor(group))) +
+  geom_jitter(width = 0.2, size = 3) + theme_bw() +
+  labs(x = NULL, y = expression(italic(r)[fMRI])) + scale_y_continuous(limits = c(0.19, 0.81)) +
+  scale_x_discrete(labels = c("group 1", "group 2")) +   # <-- change tick labels here
+  annotate("text", x = 1.5, y = 0.75, label = "group difference", size = 5, color = "black") +
+  annotate("text", x = 1.5, y = 0.7,
+         label = paste0('"95% interval: (', round(ci[1], 2), ', ', round(ci[2], 2), ')"'),
+         size = 5, color = "black", parse = TRUE) +
+  annotate("segment", x = 0.65, xend = 1.35, y = 0.4, yend = 0.4, color = gg_color_hue(2)[1], linetype = "dashed", alpha = 0.5) +
+  annotate("segment", x = 1.65, xend = 2.35, y = 0.6, yend = 0.6, color = gg_color_hue(2)[2], linetype = "dashed", alpha = 0.5) +
+  annotate("segment", x = 0.65, xend = 1.35, y = mean(res[res$group==1, ]$r), yend = mean(res[res$group==1, ]$r), color = gg_color_hue(2)[1], linetype = 1, alpha = 0.5) +
+  annotate("segment", x = 1.65, xend = 2.35, y = mean(res[res$group==2, ]$r), yend = mean(res[res$group==2, ]$r), color = gg_color_hue(2)[2], linetype = 1, alpha = 0.5) +
+  annotate("segment", x = 1.3, xend = 1.3, y = 0.4, yend = mean(res[res$group==1, ]$r), 
+               arrow = arrow(length = unit(0.2, "cm"), type = "closed"), linewidth = 0.75, color = gg_color_hue(2)[1], alpha = 0.5) +
+  annotate("segment", x = 2.3, xend = 2.3, y = 0.6, yend = mean(res[res$group==2, ]$r),
+               arrow = arrow(length = unit(0.2, "cm"), type = "closed"), linewidth = 0.75, color = gg_color_hue(2)[2], alpha = 0.5) +
+  theme(legend.position = "none", panel.border = element_blank(), panel.grid = element_blank(),
+     axis.line.y.left = element_line(color = "black"), axis.line.x.bottom = element_line(color = "black"),
+     axis.line.y.right = element_blank(), axis.line.x.top = element_blank(),
+     axis.text=element_text(size=16), strip.text.x = element_text(size = 16),
+     axis.title=element_text(size=16), strip.text = element_text(size = 16)) 
