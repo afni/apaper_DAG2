@@ -1,41 +1,70 @@
 # simulation for the underestimation of correlation in the presence of noise;
 # correlation simulated between two regions with a time series of 300 time points
-library(MASS)
-sim <- function(nt=300, rr=NULL) {
+require(MASS)
+library(ggplot2)
+library(gridExtra)
+library(ggtext)
+library(grid)
+
+res <- NULL
+sim <- function(nt=300) {
+    rr <- NULL
     dd    <- mvrnorm(n=nt, mu=rep(0,4), Sigma=V)
     bold1 <- dd[,1]+dd[,3]; bold2 <- dd[,2]+dd[,4]
-    rr    <- c(rr, cor(bold1, bold2))
+    rr  <- c(rr, cor(bold1, bold2))
 }
 
-res <- NULL # output initialization
-for(rN in seq(0, 0.8, 0.4)) for(rE in c(0)) for(rC in c(0))
-for(Rv in c(0.1,0.2,0.3,0.4,0.5,0.75,1,1.5,2,2.5,3)) {  # Rv - standard deviation ratio
-  V   <- matrix(c(1, rN, rC, rC,
+for(rN in seq(0, 0.8, 0.4))
+for(rE in c(0))
+for(rC in c(0))
+for(Rv in c(0,0.1,0.2,0.3,0.4,0.5,0.75,1,1.5,2,2.5,3)) {
+    V <- matrix(c(1, rN, rC, rC,
                 rN, 1, rC, rC,
                 rC, rC, 1, rE,
                 rC, rC, rE, 1), ncol=4, nrow=4)
-  V   <- diag(c(1,1,Rv,Rv)) %*% V %*% diag(c(1,1,Rv,Rv))
-  res <- rbind(res, data.frame(rN=rN, rE=rE, rC=rC, Rv=Rv, r=replicate(500, sim(nt=300, rr=NULL))))
+    V <- diag(c(1,1,Rv,Rv)) %*% V %*% diag(c(1,1,Rv,Rv))
+  res <- rbind(res, data.frame(rN=rN, rE=rE, rC=rC, Rv=Rv, r=replicate(500, sim(nt=300))))
 }   
 
-# simulation result plotting
-library(ggplot2)
-dd      <- aggregate(r~rN+Rv, res, mean)
-dd$se   <- aggregate(r~rN+Rv, res, sd)[,'r']
-dd$rhoP <- dd$rN; dd$rN <- as.factor(dd$rN)
-lbl     <- c(expression(rho=0), expression(rho=0.2), expression(rho=0.4), expression(rho=0.6), expression(rho=0.8))
-ll      <- expression(rho = 0, rho = 0.2, rho = 0.4, rho = 0.6, rho = 0.8)
-levels(dd$rN) <- c(parse(text = paste("rho~'='~0")), parse(text = paste("rho~'='~0.4")), parse(text = paste("rho~'='~0.8")))
+# plotting
+dd    <- aggregate(r~rN+Rv, res, mean)
+dd$se <- aggregate(r~rN+Rv, res, sd)[,'r']
+require(ggplot2)
+ddR <- dd; ddR$rhoP <- dd$rN
+ddR$rN <- as.factor(ddR$rN)
+lbl <- c(expression(rho=0), expression(rho=0.2), expression(rho=0.4), expression(rho=0.6), expression(rho=0.8))
+ll <- expression(rho = 0, rho = 0.2, rho = 0.4, rho = 0.6, rho = 0.8)
+ddR$rN <- factor(ddR$rN)
+levels(ddR$rN) <- c("r[neur] == 0", "r[neur] == 0.4", "r[neur] == 0.8")
+
 dev.new(width=6, height=2.5)
-ggplot(dd, aes(x=Rv, y=r)) + theme_bw() + 
-  geom_errorbar(aes(ymin=r-2*se, ymax=r+2*se, col='red'), width=.1) +
-  geom_point(size=1.5, shape=21, fill="white", col='red') + geom_hline(aes(yintercept = rhoP, col='blue')) +
-  stat_smooth(aes(x = Rv, y = r), method = "gam", se = FALSE, color='cyan') +
-  scale_color_manual(values = c('blue', 'red'), labels=c(parse(text='assumed: rho'), expression('estimated: r')) ) +
+ggplot(ddR, aes(x = Rv, y = r)) + theme_bw() +
+  geom_pointrange(aes(ymin = r - 2 * se, ymax = r + 2 * se, col = 'red'), fatten = 3) +
+  geom_point(aes(col = 'red'), size = 1.5, shape = 21, fill = "white") +
+  geom_hline(aes(yintercept = rhoP, col = 'blue')) +
+  stat_smooth(aes(x = Rv, y = r, col = 'cyan'), method = "gam", se = FALSE) +
+  scale_color_manual(
+    values = c('blue' = 'red', 'cyan' = 'cyan', 'red' = 'blue'),
+    labels = c(
+      expression('assumed: r'[neur]),
+      expression('theoretical: r'[fMRI]),
+      expression('simulated: r'[fMRI])
+    )
+  ) +
   facet_grid(~rN, scales = "fixed", labeller = label_parsed) +
-  labs(x=expression('relative amount of noise, Rv'), y=expression('estimated BOLD correlation, r')) + guides(linetype = "none") +
-  theme(legend.position = c(.15,.75), legend.text=element_text(size=10), legend.title=element_blank(),
-     axis.text=element_text(size=10), strip.text.x = element_text(size = 10),
-     axis.title=element_text(size=10), strip.text = element_text(size = 10),
-     panel.border = element_blank(),
-     panel.background = element_blank())
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.5, alpha=0.25, linetype = "dashed") +
+  labs(
+    x = expression('relative noise magnitude, R'[v]),
+    y = expression('correlation') #, r'[fMRI])
+  ) +
+  guides(linetype = "none") +
+  theme(strip.background = element_blank(), panel.grid = element_blank(),
+    legend.position = "none", #legend.position = c(.15, .7),
+    legend.text = element_text(size = 10),
+    legend.title = element_blank(),
+    axis.text = element_text(size = 10),
+    strip.text.x = element_text(size = 10),
+    axis.title = element_text(size = 10),
+    panel.border = element_blank(),
+    panel.background = element_blank()
+  )
